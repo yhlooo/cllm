@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/bombsimon/logrusr/v4"
@@ -17,6 +20,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/yhlooo/cllm/pkg/i18n"
+	"github.com/yhlooo/cllm/pkg/llm"
 	"github.com/yhlooo/cllm/pkg/version"
 )
 
@@ -58,10 +62,24 @@ func NewOptions() Options {
 
 // Options 运行选项
 type Options struct {
+	URL          string
+	BaseURL      string
+	APIKey       string
+	SystemPrompt string
+	Headers      []string
+	Model        string
+	Stream       bool
 }
 
 // AddPFlags 将选项绑定到命令行参数
-func (o *Options) AddPFlags(_ *pflag.FlagSet) {
+func (o *Options) AddPFlags(fs *pflag.FlagSet) {
+	fs.StringVarP(&o.URL, "url", "u", o.URL, "Request URL")
+	fs.StringVarP(&o.BaseURL, "base-url", "b", o.BaseURL, "Request base URL")
+	fs.StringVarP(&o.APIKey, "api-key", "k", o.APIKey, "API Key")
+	fs.StringVar(&o.SystemPrompt, "system-prompt", o.SystemPrompt, "System prompt")
+	fs.StringSliceVarP(&o.Headers, "header", "H", o.Headers, "Custom header(s)")
+	fs.StringVarP(&o.Model, "model", "m", o.Model, "Model name")
+	fs.BoolVarP(&o.Stream, "stream", "s", o.Stream, "Stream output")
 }
 
 // NewCommand 创建根命令
@@ -71,12 +89,13 @@ func NewCommand(name string) *cobra.Command {
 
 	var keylog *os.File
 	cmd := &cobra.Command{
-		Use:           name,
+		Use:           fmt.Sprintf("%s [OPTIONS] PROMPT", name),
 		Short:         i18n.T(MsgRootDesc),
 		Long:          i18n.T(MsgRootLongDesc),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.Version,
+		Args:          cobra.MinimumNArgs(1),
 
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -107,7 +126,55 @@ func NewCommand(name string) *cobra.Command {
 		},
 
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("Hello World!")
+			ctx := cmd.Context()
+			builder := llm.NewOpenAIChatCompletionRequestBuilder().
+				WithContext(ctx).
+				WithBaseURL(opts.BaseURL).
+				WithURL(opts.URL).
+				WithAPIKey(opts.APIKey).
+				WithModel(opts.Model).
+				WithStream(opts.Stream).
+				WithSystemPrompt(opts.SystemPrompt)
+
+			for _, h := range opts.Headers {
+				key, value, err := parseHeader(h)
+				if err != nil {
+					return fmt.Errorf("invalid header %q: %w (must be in format 'Key: value')", h, err)
+				}
+				builder = builder.WithHeader(key, value)
+			}
+
+			for _, arg := range args {
+				builder = builder.WithUserPrompt(arg)
+			}
+
+			// 构建请求
+			req, err := builder.Build()
+			if err != nil {
+				return fmt.Errorf("build request error: %w", err)
+			}
+			if globalOpts.Verbose {
+				printRequest(os.Stderr, req)
+			}
+
+			// 发送请求
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("send request error: %w", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if globalOpts.Verbose {
+				printResponse(os.Stderr, resp)
+			}
+
+			if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
+				return fmt.Errorf("read from response error: %w", err)
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("unexpected status code: %d (!= 200)", resp.StatusCode)
+			}
+
 			return nil
 		},
 
@@ -127,6 +194,62 @@ func NewCommand(name string) *cobra.Command {
 	)
 
 	return cmd
+}
+
+// printRequest 打印请求
+func printRequest(w io.StringWriter, req *http.Request) {
+	// 请求行
+	_, _ = w.WriteString(fmt.Sprintf("> %s %s %s\n", req.Method, req.URL.RequestURI(), req.Proto))
+
+	// 请求头
+	_, _ = w.WriteString(fmt.Sprintf("> Host: %s\n", req.Host))
+	headerKeys := make([]string, 0, len(req.Header))
+	for k := range req.Header {
+		headerKeys = append(headerKeys, k)
+	}
+	sort.Strings(headerKeys)
+	for _, k := range headerKeys {
+		for _, v := range req.Header[k] {
+			_, _ = w.WriteString(fmt.Sprintf("> %s: %s\n", k, v))
+		}
+	}
+	_, _ = w.WriteString(fmt.Sprintf("> Content-Length: %d\n", req.ContentLength))
+	_, _ = w.WriteString(">\n")
+}
+
+// printResponse 打印响应
+func printResponse(w io.StringWriter, resp *http.Response) {
+	_, _ = w.WriteString(fmt.Sprintf("< %s %s\n", resp.Proto, resp.Status))
+
+	// 响应头
+	headerKeys := make([]string, 0, len(resp.Header))
+	for k := range resp.Header {
+		headerKeys = append(headerKeys, k)
+	}
+	sort.Strings(headerKeys)
+	sort.Strings(headerKeys)
+	for _, k := range headerKeys {
+		for _, v := range resp.Header[k] {
+			_, _ = w.WriteString(fmt.Sprintf("< %s: %s\n", k, v))
+		}
+	}
+	_, _ = w.WriteString("<\n")
+}
+
+// parseHeader 解析请求头
+func parseHeader(content string) (key, value string, err error) {
+	divided := strings.SplitN(content, ":", 2)
+	if len(divided) != 2 {
+		return "", "", fmt.Errorf("missing ':'")
+	}
+
+	key = strings.TrimSpace(divided[0])
+	if key == "" {
+		return "", "", fmt.Errorf("missing key")
+	}
+	value = strings.TrimSpace(divided[1])
+
+	return key, value, nil
 }
 
 // setKeyLog 设置 TLS keylog
