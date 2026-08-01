@@ -12,16 +12,16 @@ import (
 )
 
 const (
-	oaiChatCompletionsURI = "/chat/completions"
+	oaiChatCompletionURI = "/chat/completions"
 )
 
-// NewOpenAIChatCompletionRequestBuilder 创建 OpenAI 对话补全请求构造器
-func NewOpenAIChatCompletionRequestBuilder() OpenAICompatibleRequestBuilder {
-	return OpenAICompatibleRequestBuilder{}
+// NewOpenAIChatCompletionRequest 创建 OpenAI 对话补全请求构造器
+func NewOpenAIChatCompletionRequest() OpenAIChatCompletionRequest {
+	return OpenAIChatCompletionRequest{}
 }
 
-// OpenAICompatibleRequestBuilder OpenAI 兼容请求构造器
-type OpenAICompatibleRequestBuilder struct {
+// OpenAIChatCompletionRequest OpenAI 兼容请求构造器
+type OpenAIChatCompletionRequest struct {
 	ctx         context.Context
 	url         string
 	apiKey      string
@@ -32,14 +32,16 @@ type OpenAICompatibleRequestBuilder struct {
 	stream   bool
 }
 
+var _ RequestBuilder = OpenAIChatCompletionRequest{}
+
 // WithContext 带上上下文
-func (b OpenAICompatibleRequestBuilder) WithContext(ctx context.Context) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithContext(ctx context.Context) RequestBuilder {
 	b.ctx = ctx
 	return b
 }
 
 // WithURL 带上 URL
-func (b OpenAICompatibleRequestBuilder) WithURL(url string) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithURL(url string) RequestBuilder {
 	if url == "" {
 		return b
 	}
@@ -48,40 +50,40 @@ func (b OpenAICompatibleRequestBuilder) WithURL(url string) OpenAICompatibleRequ
 }
 
 // WithBaseURL 带上 URL 前缀
-func (b OpenAICompatibleRequestBuilder) WithBaseURL(baseURL string) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithBaseURL(baseURL string) RequestBuilder {
 	if baseURL == "" {
 		return b
 	}
-	b.url = strings.TrimSuffix(baseURL, "/") + oaiChatCompletionsURI
+	b.url = strings.TrimSuffix(baseURL, "/") + oaiChatCompletionURI
 	return b
 }
 
 // WithAPIKey 带上认证 API Key
-func (b OpenAICompatibleRequestBuilder) WithAPIKey(apiKey string) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithAPIKey(apiKey string) RequestBuilder {
 	b.apiKey = apiKey
 	return b
 }
 
 // WithHeader 带上请求头
-func (b OpenAICompatibleRequestBuilder) WithHeader(key, value string) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithHeader(key, value string) RequestBuilder {
 	b.extraHeader.Add(key, value)
 	return b
 }
 
 // WithModel 带上模型名
-func (b OpenAICompatibleRequestBuilder) WithModel(model string) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithModel(model string) RequestBuilder {
 	b.model = model
 	return b
 }
 
 // WithStream 带上指定流式模式开关
-func (b OpenAICompatibleRequestBuilder) WithStream(enabled bool) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithStream(enabled bool) RequestBuilder {
 	b.stream = enabled
 	return b
 }
 
 // WithSystemPrompt 带上系统提示词
-func (b OpenAICompatibleRequestBuilder) WithSystemPrompt(content string) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithSystemPrompt(content string) RequestBuilder {
 	if content == "" {
 		return b
 	}
@@ -90,7 +92,7 @@ func (b OpenAICompatibleRequestBuilder) WithSystemPrompt(content string) OpenAIC
 }
 
 // WithUserPrompt 带上用户提示词
-func (b OpenAICompatibleRequestBuilder) WithUserPrompt(content string) OpenAICompatibleRequestBuilder {
+func (b OpenAIChatCompletionRequest) WithUserPrompt(content string) RequestBuilder {
 	if content == "" {
 		return b
 	}
@@ -99,7 +101,7 @@ func (b OpenAICompatibleRequestBuilder) WithUserPrompt(content string) OpenAICom
 }
 
 // Build 构建请求
-func (b OpenAICompatibleRequestBuilder) Build() (*http.Request, error) {
+func (b OpenAIChatCompletionRequest) Build() (*http.Request, error) {
 	params := &openai.ChatCompletionNewParams{
 		Model:    b.model,
 		Messages: b.messages,

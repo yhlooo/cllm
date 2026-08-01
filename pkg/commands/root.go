@@ -20,14 +20,14 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/yhlooo/cllm/pkg/i18n"
-	"github.com/yhlooo/cllm/pkg/llm"
 	"github.com/yhlooo/cllm/pkg/version"
 )
 
 // NewGlobalOptions 创建默认 GlobalOptions
 func NewGlobalOptions() GlobalOptions {
 	return GlobalOptions{
-		Verbose: false,
+		Verbose:      false,
+		OutputFormat: "human-readable",
 	}
 }
 
@@ -35,11 +35,14 @@ func NewGlobalOptions() GlobalOptions {
 type GlobalOptions struct {
 	// 更多日志
 	Verbose bool
+	// 输出格式
+	OutputFormat string
 }
 
 // AddPFlags 将选项绑定到命令行参数
 func (o *GlobalOptions) AddPFlags(fs *pflag.FlagSet) {
 	fs.BoolVarP(&o.Verbose, "verbose", "v", o.Verbose, i18n.T(MsgGlobalOptsVerboseDesc))
+	fs.StringVarP(&o.OutputFormat, "output-format", "o", o.OutputFormat, i18n.T(MsgGlobalOptsOutputFormatDesc))
 }
 
 type globalOptsContextKey struct{}
@@ -61,26 +64,10 @@ func NewOptions() Options {
 }
 
 // Options 运行选项
-type Options struct {
-	URL          string
-	BaseURL      string
-	APIKey       string
-	SystemPrompt string
-	Headers      []string
-	Model        string
-	Stream       bool
-}
+type Options struct{}
 
 // AddPFlags 将选项绑定到命令行参数
-func (o *Options) AddPFlags(fs *pflag.FlagSet) {
-	fs.StringVarP(&o.URL, "url", "u", o.URL, "Request URL")
-	fs.StringVarP(&o.BaseURL, "base-url", "b", o.BaseURL, "Request base URL")
-	fs.StringVarP(&o.APIKey, "api-key", "k", o.APIKey, "API Key")
-	fs.StringVar(&o.SystemPrompt, "system-prompt", o.SystemPrompt, "System prompt")
-	fs.StringSliceVarP(&o.Headers, "header", "H", o.Headers, "Custom header(s)")
-	fs.StringVarP(&o.Model, "model", "m", o.Model, "Model name")
-	fs.BoolVarP(&o.Stream, "stream", "s", o.Stream, "Stream output")
-}
+func (o *Options) AddPFlags(_ *pflag.FlagSet) {}
 
 // NewCommand 创建根命令
 func NewCommand(name string) *cobra.Command {
@@ -89,13 +76,12 @@ func NewCommand(name string) *cobra.Command {
 
 	var keylog *os.File
 	cmd := &cobra.Command{
-		Use:           fmt.Sprintf("%s [OPTIONS] PROMPT", name),
+		Use:           name,
 		Short:         i18n.T(MsgRootDesc),
 		Long:          i18n.T(MsgRootLongDesc),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.Version,
-		Args:          cobra.MinimumNArgs(1),
 
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -125,59 +111,6 @@ func NewCommand(name string) *cobra.Command {
 			return nil
 		},
 
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			builder := llm.NewOpenAIChatCompletionRequestBuilder().
-				WithContext(ctx).
-				WithBaseURL(opts.BaseURL).
-				WithURL(opts.URL).
-				WithAPIKey(opts.APIKey).
-				WithModel(opts.Model).
-				WithStream(opts.Stream).
-				WithSystemPrompt(opts.SystemPrompt)
-
-			for _, h := range opts.Headers {
-				key, value, err := parseHeader(h)
-				if err != nil {
-					return fmt.Errorf("invalid header %q: %w (must be in format 'Key: value')", h, err)
-				}
-				builder = builder.WithHeader(key, value)
-			}
-
-			for _, arg := range args {
-				builder = builder.WithUserPrompt(arg)
-			}
-
-			// 构建请求
-			req, err := builder.Build()
-			if err != nil {
-				return fmt.Errorf("build request error: %w", err)
-			}
-			if globalOpts.Verbose {
-				printRequest(os.Stderr, req)
-			}
-
-			// 发送请求
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return fmt.Errorf("send request error: %w", err)
-			}
-			defer func() { _ = resp.Body.Close() }()
-			if globalOpts.Verbose {
-				printResponse(os.Stderr, resp)
-			}
-
-			if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
-				return fmt.Errorf("read from response error: %w", err)
-			}
-
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("unexpected status code: %d (!= 200)", resp.StatusCode)
-			}
-
-			return nil
-		},
-
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
 			if keylog != nil {
 				_ = keylog.Close()
@@ -190,6 +123,7 @@ func NewCommand(name string) *cobra.Command {
 	opts.AddPFlags(cmd.Flags())
 
 	cmd.AddCommand(
+		newOpenAICommand(),
 		newVersionCommand(),
 	)
 

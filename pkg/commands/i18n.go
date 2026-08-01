@@ -7,22 +7,22 @@ var (
 		ID:    "commands.GlobalOptsVerboseDesc",
 		Other: "Show more logs",
 	}
+	MsgGlobalOptsOutputFormatDesc = &i18n.Message{
+		ID:    "commands.GlobalOptsOutputFormatDesc",
+		Other: "Output format. One of (human-readable, json, raw)",
+	}
 
 	MsgRootDesc = &i18n.Message{
 		ID:    "commands.CmdShortDesc",
-		Other: "Example Go application.",
+		Other: "cllm - CLI Client for LLM",
 	}
 	MsgRootLongDesc = &i18n.Message{
 		ID:    "commands.CmdLongDesc",
-		Other: `This is an example go application.`,
+		Other: `cllm - CLI Client for LLM`,
 	}
 
 	MsgVersionDesc = &i18n.Message{
 		ID:    "commands.VersionDesc",
 		Other: "Print the version information",
-	}
-	MsgVersionOptsOutputFormatDesc = &i18n.Message{
-		ID:    "commands.VersionOptsOutputFormatDesc",
-		Other: "Output format. One of (json, yaml)",
 	}
 )
