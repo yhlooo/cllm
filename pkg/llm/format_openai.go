@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,17 +20,26 @@ type OpenAIChatCompletionHumanReadableFormatter struct {
 	ReasoningContentField string
 }
 
-// Format 格式化响应并输出
-func (f OpenAIChatCompletionHumanReadableFormatter) Format(r io.Reader) error {
-	ret, err := decodeOpenAIChatCompletion(r)
-	if err != nil {
-		return err
-	}
+var _ Formatter = OpenAIChatCompletionHumanReadableFormatter{}
 
-	if len(ret.Choices) == 0 {
+// Format 格式化响应并输出
+func (f OpenAIChatCompletionHumanReadableFormatter) Format(data any, _ []byte) error {
+	switch typedData := data.(type) {
+	case openai.ChatCompletion:
+		return f.formatResp(typedData)
+	case openai.ChatCompletionChunk:
+		return f.formatChunk(typedData)
+	default:
+		return fmt.Errorf("unsupported data type %T", data)
+	}
+}
+
+// formatResp 格式化响应并输出
+func (f OpenAIChatCompletionHumanReadableFormatter) formatResp(resp openai.ChatCompletion) error {
+	if len(resp.Choices) == 0 {
 		return nil
 	}
-	msg := ret.Choices[0].Message
+	msg := resp.Choices[0].Message
 
 	if f.ShowReasoningContent {
 		field := f.ReasoningContentField
@@ -45,7 +53,7 @@ func (f OpenAIChatCompletionHumanReadableFormatter) Format(r io.Reader) error {
 				return fmt.Errorf("invalid reasoning content: %w, content: %q (must be string)", err, content.Raw())
 			}
 			if contentStr != "" {
-				_, err = f.Writer.Write([]byte("\x1b[2m" + strings.TrimSuffix(contentStr, "\n") + "\x1b[22m\n"))
+				_, err := f.Writer.Write([]byte("\x1b[2m" + strings.TrimSuffix(contentStr, "\n") + "\x1b[22m\n"))
 				if err != nil {
 					return err
 				}
@@ -53,37 +61,31 @@ func (f OpenAIChatCompletionHumanReadableFormatter) Format(r io.Reader) error {
 		}
 	}
 
-	_, err = f.Writer.Write([]byte(strings.TrimSuffix(msg.Content, "\n") + "\n"))
-
-	return nil
-}
-
-// decodeOpenAIChatCompletion 解码 OpenAI 对话补全响应
-func decodeOpenAIChatCompletion(r io.Reader) (*openai.ChatCompletion, error) {
-	d := json.NewDecoder(r)
-	ret := openai.ChatCompletion{}
-	if err := d.Decode(&ret); err != nil {
-		return nil, err
-	}
-	return &ret, nil
-}
-
-// OpenAIChatCompletionJSONFormatter OpenAI 对话补全响应 JSON 格式化器
-type OpenAIChatCompletionJSONFormatter struct {
-	Writer io.Writer
-}
-
-// Format 格式化响应并输出
-func (f OpenAIChatCompletionJSONFormatter) Format(r io.Reader) error {
-	raw, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	buff := &bytes.Buffer{}
-	if err := json.Indent(buff, raw, "", "  "); err != nil {
-		return err
-	}
-	buff.WriteString("\n")
-	_, err = io.Copy(f.Writer, buff)
+	_, err := f.Writer.Write([]byte(strings.TrimSuffix(msg.Content, "\n") + "\n"))
 	return err
+}
+
+// formatChunk 格式化流式消息块并输出
+func (f OpenAIChatCompletionHumanReadableFormatter) formatChunk(chunk openai.ChatCompletionChunk) error {
+	if len(chunk.Choices) == 0 {
+		return nil
+	}
+	choice := chunk.Choices[0]
+
+	// TODO: 思考过程
+
+	if _, err := f.Writer.Write([]byte(choice.Delta.Content)); err != nil {
+		return err
+	}
+	if choice.FinishReason != "" {
+		if _, err := f.Writer.Write([]byte("\n")); err != nil {
+			return err
+		}
+		if choice.FinishReason != string(openai.CompletionChoiceFinishReasonStop) {
+			if _, err := f.Writer.Write([]byte("[" + choice.FinishReason + "]\n")); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

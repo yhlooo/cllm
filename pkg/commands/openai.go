@@ -109,15 +109,51 @@ func newOpenAICommand() *cobra.Command {
 				builder = builder.WithHeader(key, value)
 			}
 
-			// 组装消息
-			builder = builder.
-				WithSessionFile(opts.SessionFile).
-				WithSystemText(opts.SystemPrompt)
+			sessionStore := llm.SessionStore(llm.DiscardSessionStore{})
+			if opts.SessionFile != "" {
+				sessionStore = &llm.FileSessionStore{Path: opts.SessionFile}
+			}
+			defer func() { _ = sessionStore.Close() }()
+
+			// 加载历史消息
+			history, err := sessionStore.Load()
+			if err != nil {
+				return fmt.Errorf("load session history error: %w", err)
+			}
+			builder = builder.WithMessages(history...)
+
+			// 添加系统消息
+			if opts.SystemPrompt != "" {
+				spMsg := llm.SystemMessage(llm.TextPart(opts.SystemPrompt))
+				builder = builder.WithMessages(spMsg)
+				if err := sessionStore.Add(spMsg); err != nil {
+					return fmt.Errorf("store system message error: %w", err)
+				}
+			}
+
+			// 组装用户消息
+			var userParts []llm.MessageContentPart
 			for _, path := range opts.Attachments {
-				builder = builder.WithUserAttachment(path)
+				p, err := llm.ReadBlobFile(path)
+				if err != nil {
+					return fmt.Errorf("read attachment %q error: %w", path, err)
+				}
+				userParts = append(userParts, p)
 			}
 			for _, arg := range args {
-				builder = builder.WithUserText(arg)
+				attachmentParts, err := llm.ParseTextAttachments(arg)
+				if err != nil {
+					return err
+				}
+				userParts = append(userParts, attachmentParts...)
+				userParts = append(userParts, llm.TextPart(arg))
+			}
+			if len(userParts) > 0 {
+				usrMsg := llm.UserMessage(userParts...)
+				builder = builder.WithMessages(usrMsg)
+				if err := sessionStore.Add(usrMsg); err != nil {
+					return fmt.Errorf("store user message error: %w", err)
+				}
 			}
 
 			// 构建请求
@@ -156,22 +192,28 @@ func newOpenAICommand() *cobra.Command {
 			}
 
 			// 输出结果
+			var formatter llm.Formatter
 			switch globalOpts.OutputFormat {
 			case "json":
-				err = llm.OpenAIChatCompletionJSONFormatter{
-					Writer: os.Stdout,
-				}.Format(resp.Body)
+				formatter = llm.JSONFormatter{Writer: os.Stdout}
 			case "raw":
-				_, err = io.Copy(os.Stdout, resp.Body)
-				if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
-					return fmt.Errorf("read from response error: %w", err)
-				}
+				formatter = llm.RawFormatter{Writer: os.Stdout}
 			default: // "human-readable"
-				err = llm.OpenAIChatCompletionHumanReadableFormatter{
+				formatter = llm.OpenAIChatCompletionHumanReadableFormatter{
 					Writer:                os.Stdout,
 					ShowReasoningContent:  opts.ShowReasoningContent,
 					ReasoningContentField: opts.ReasoningContentField,
-				}.Format(resp.Body)
+				}
+			}
+
+			handler := llm.OpenAIChatCompletionResponseHandler{
+				Formatter:    formatter,
+				SessionStore: sessionStore,
+			}
+			if opts.Stream {
+				err = handler.HandleStream(resp)
+			} else {
+				err = handler.Handle(resp)
 			}
 			if err != nil {
 				return fmt.Errorf("read from response error: %w", err)

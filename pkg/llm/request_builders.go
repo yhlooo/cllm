@@ -22,14 +22,8 @@ type RequestBuilder interface {
 	// WithStream 带上指定流式模式开关
 	WithStream(enabled bool) RequestBuilder
 
-	// WithSessionFile 带上会话历史消息
-	WithSessionFile(path string) RequestBuilder
-	// WithSystemText 带上系统文本消息
-	WithSystemText(content string) RequestBuilder
-	// WithUserAttachment 带上用户附件消息
-	WithUserAttachment(path string) RequestBuilder
-	// WithUserText 带上用户文本消息
-	WithUserText(content string) RequestBuilder
+	// WithMessages 带上消息
+	WithMessages(messages ...Message) RequestBuilder
 
 	// BuildBody 构建请求体内容
 	BuildBody() (any, error)

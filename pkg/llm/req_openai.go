@@ -7,14 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"mime"
 	"net/http"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 
-	"github.com/h2non/filetype"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
 )
@@ -38,9 +33,7 @@ type OpenAIChatCompletionRequest struct {
 	model  string
 	stream bool
 
-	history     []openai.ChatCompletionMessageParamUnion
-	systemText  string
-	userContent []openai.ChatCompletionContentPartUnionParam
+	oaiMessages []openai.ChatCompletionMessageParamUnion
 
 	errors []error
 }
@@ -95,113 +88,24 @@ func (b OpenAIChatCompletionRequest) WithStream(enabled bool) RequestBuilder {
 	return b
 }
 
-// WithSessionFile 带上会话历史消息
-func (b OpenAIChatCompletionRequest) WithSessionFile(_ string) RequestBuilder {
-	// TODO: ...
-	return b
-}
-
-// WithSystemText 带上系统文本消息
-func (b OpenAIChatCompletionRequest) WithSystemText(content string) RequestBuilder {
-	b.systemText = content
-	return b
-}
-
-// WithUserAttachment 带上用户附件消息
-func (b OpenAIChatCompletionRequest) WithUserAttachment(path string) RequestBuilder {
-	mediaType, content, err := readAttachment(path)
-	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("read attachment %q error: %w", path, err))
-		return b
-	}
-
-	if strings.HasPrefix(mediaType, "image/") {
-		// 图片
-		b.userContent = append(b.userContent, openai.ImageContentPart(
-			openai.ChatCompletionContentPartImageImageURLParam{
-				URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(content),
-			},
-		))
-	} else if strings.HasPrefix(mediaType, "audio/") {
-		// 音频
-		format := openai.ChatCompletionAudioParamFormat("")
-		switch mediaType {
-		case "audio/mpeg":
-			format = openai.ChatCompletionAudioParamFormatMP3
-		case "audio/wav", "audio/vnd.wave":
-			format = openai.ChatCompletionAudioParamFormatWAV
-		default:
-			// TODO: 转为 mp3
-			b.errors = append(b.errors, fmt.Errorf(
-				"unsupported audio type: %q (must be 'audio/mpeg' or 'audio/wav')",
-				mediaType,
-			))
-			return b
-		}
-		b.userContent = append(b.userContent, openai.InputAudioContentPart(
-			openai.ChatCompletionContentPartInputAudioInputAudioParam{
-				Format: string(format),
-				Data:   base64.StdEncoding.EncodeToString(content),
-			},
-		))
-	} else {
-		// 文件
-		b.userContent = append(b.userContent, openai.FileContentPart(
-			openai.ChatCompletionContentPartFileFileParam{
-				Filename: param.NewOpt(filepath.Base(path)),
-				FileData: param.NewOpt("data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(content)),
-			},
-		))
-	}
-
-	return b
-}
-
-var attachmentPathRegexp = regexp.MustCompile(`@((?:\S|\\ )+)(?:\s|$)`)
-
-// WithUserText 带上用户文本消息
-func (b OpenAIChatCompletionRequest) WithUserText(content string) RequestBuilder {
-	if content == "" {
-		return b
-	}
-
-	builder := b
-	// 解析其中的 @path/to/file
-	attachmentPaths := attachmentPathRegexp.FindAllStringSubmatch(content, -1)
-	for _, groups := range attachmentPaths {
-		path := groups[1]
-		if strings.HasPrefix(path, "~/") {
-			home := os.Getenv("HOME")
-			path = filepath.Join(home, path[2:])
-		}
-		stat, err := os.Stat(path)
+// WithMessages 带上消息
+func (b OpenAIChatCompletionRequest) WithMessages(messages ...Message) RequestBuilder {
+	for _, msg := range messages {
+		oaiMsg, err := newOpenAIMessage(msg)
 		if err != nil {
+			b.errors = append(b.errors, err)
 			continue
 		}
-		if stat.IsDir() {
-			continue
-		}
-		builder = builder.WithUserAttachment(path).(OpenAIChatCompletionRequest)
+		b.oaiMessages = append(b.oaiMessages, oaiMsg)
 	}
-
-	builder.userContent = append(builder.userContent, openai.TextContentPart(content))
-	return builder
+	return b
 }
 
 // BuildBody 构建请求体内容
 func (b OpenAIChatCompletionRequest) BuildBody() (any, error) {
-	var messages []openai.ChatCompletionMessageParamUnion
-	messages = append(messages, b.history...)
-	if b.systemText != "" {
-		messages = append(messages, openai.SystemMessage(b.systemText))
-	}
-	if len(b.userContent) > 0 {
-		messages = append(messages, openai.UserMessage(b.userContent))
-	}
-
 	params := &openai.ChatCompletionNewParams{
 		Model:    b.model,
-		Messages: messages,
+		Messages: b.oaiMessages,
 	}
 	params.SetExtraFields(map[string]any{
 		"stream": b.stream,
@@ -248,27 +152,149 @@ func (b OpenAIChatCompletionRequest) Build() (*http.Request, error) {
 	return req, nil
 }
 
-// readAttachment
-func readAttachment(path string) (mediaType string, content []byte, err error) {
-	content, err = os.ReadFile(path)
-	if err != nil {
-		return "", nil, err
-	}
-
-	// 通过文件扩展名判断 media type
-	mediaType = mime.TypeByExtension(filepath.Ext(path))
-
-	if mediaType == "" {
-		// 通过 Magic Number 判断 media type
-		t, err := filetype.Match(content)
-		if err == nil {
-			mediaType = t.MIME.Value
+func newOpenAIMessage(msg Message) (openai.ChatCompletionMessageParamUnion, error) {
+	switch msg.Role {
+	case RoleSystem:
+		switch len(msg.Content) {
+		case 0:
+			return openai.SystemMessage(""), nil
+		case 1:
+			if !msg.Content[0].IsText() {
+				return openai.ChatCompletionMessageParamUnion{},
+					fmt.Errorf("system message only support text content")
+			}
+			return openai.SystemMessage(msg.Content[0].Text.Content), nil
 		}
+
+		parts := make([]openai.ChatCompletionContentPartTextParam, 0, len(msg.Content))
+		for _, part := range msg.Content {
+			if !part.IsText() {
+				return openai.ChatCompletionMessageParamUnion{},
+					fmt.Errorf("system message only support text content")
+			}
+			parts = append(parts, openai.ChatCompletionContentPartTextParam{
+				Text: part.Text.Content,
+			})
+		}
+		return openai.SystemMessage(parts), nil
+
+	case RoleUser:
+		if len(msg.Content) == 0 {
+			return openai.UserMessage(""), nil
+		}
+		if len(msg.Content) == 1 && msg.Content[0].IsText() {
+			return openai.UserMessage(msg.Content[0].Text.Content), nil
+		}
+
+		parts := make([]openai.ChatCompletionContentPartUnionParam, 0, len(msg.Content))
+		for _, part := range msg.Content {
+			if part.IsText() {
+				parts = append(parts, openai.TextContentPart(part.Text.Content))
+				continue
+			}
+			if !part.IsBlob() {
+				return openai.ChatCompletionMessageParamUnion{},
+					fmt.Errorf("unsupported user message content")
+			}
+
+			blob := part.Blob
+
+			if strings.HasPrefix(blob.MediaType, "image/") {
+				// 图片
+				parts = append(parts, openai.ImageContentPart(
+					openai.ChatCompletionContentPartImageImageURLParam{
+						URL: "data:" + blob.MediaType + ";base64," + base64.StdEncoding.EncodeToString(blob.Content),
+					},
+				))
+			} else if strings.HasPrefix(blob.MediaType, "audio/") {
+				// 音频
+				format := openai.ChatCompletionAudioParamFormat("")
+				switch blob.MediaType {
+				case "audio/mpeg":
+					format = openai.ChatCompletionAudioParamFormatMP3
+				case "audio/wav", "audio/vnd.wave":
+					format = openai.ChatCompletionAudioParamFormatWAV
+				default:
+					// TODO: 转为 mp3
+					return openai.ChatCompletionMessageParamUnion{},
+						fmt.Errorf(
+							"unsupported audio type: %q (must be 'audio/mpeg' or 'audio/wav')",
+							blob.MediaType,
+						)
+				}
+				parts = append(parts, openai.InputAudioContentPart(
+					openai.ChatCompletionContentPartInputAudioInputAudioParam{
+						Format: string(format),
+						Data:   base64.StdEncoding.EncodeToString(blob.Content),
+					},
+				))
+			} else {
+				// 文件
+				parts = append(parts, openai.FileContentPart(
+					openai.ChatCompletionContentPartFileFileParam{
+						Filename: param.NewOpt(blob.Filename),
+						FileData: param.NewOpt(
+							"data:" + blob.MediaType + ";base64," + base64.StdEncoding.EncodeToString(blob.Content),
+						),
+					},
+				))
+			}
+		}
+		return openai.UserMessage(parts), nil
+
+	case RoleAssistant:
+		if len(msg.Content) == 0 {
+			return openai.AssistantMessage(""), nil
+		}
+		if len(msg.Content) == 1 && msg.Content[0].IsText() {
+			return openai.AssistantMessage(msg.Content[0].Text.Content), nil
+		}
+
+		parts := make([]openai.ChatCompletionAssistantMessageParamContentArrayOfContentPartUnion, 0, len(msg.Content))
+		for _, part := range msg.Content {
+			if part.IsRefusal() {
+				parts = append(parts, openai.ChatCompletionAssistantMessageParamContentArrayOfContentPartUnion{
+					OfRefusal: &openai.ChatCompletionContentPartRefusalParam{
+						Refusal: part.Refusal.Content,
+					},
+				})
+			} else if part.IsText() {
+				parts = append(parts, openai.ChatCompletionAssistantMessageParamContentArrayOfContentPartUnion{
+					OfText: &openai.ChatCompletionContentPartTextParam{
+						Text: part.Text.Content,
+					},
+				})
+			} else {
+				return openai.ChatCompletionMessageParamUnion{},
+					fmt.Errorf("assistant message only support text content")
+			}
+		}
+		return openai.AssistantMessage(parts), nil
+
+	case RoleTool:
+		switch len(msg.Content) {
+		case 0:
+			return openai.ToolMessage("", msg.ToolCallID), nil
+		case 1:
+			if !msg.Content[0].IsText() {
+				return openai.ChatCompletionMessageParamUnion{},
+					fmt.Errorf("tool message only support text content")
+			}
+			return openai.ToolMessage(msg.Content[0].Text.Content, msg.ToolCallID), nil
+		}
+
+		parts := make([]openai.ChatCompletionContentPartTextParam, 0, len(msg.Content))
+		for _, part := range msg.Content {
+			if !part.IsText() {
+				return openai.ChatCompletionMessageParamUnion{},
+					fmt.Errorf("tool message only support text content")
+			}
+			parts = append(parts, openai.ChatCompletionContentPartTextParam{
+				Text: part.Text.Content,
+			})
+		}
+		return openai.ToolMessage(parts, msg.ToolCallID), nil
 	}
 
-	if mediaType == "" {
-		mediaType = "application/octet-stream"
-	}
-
-	return mediaType, content, nil
+	return openai.ChatCompletionMessageParamUnion{}, fmt.Errorf("unsupported role %q", msg.Role)
 }
