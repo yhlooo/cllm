@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,7 @@ func NewOpenAIOptions() OpenAIOptions {
 		Attachments:           nil,
 		ShowReasoningContent:  true,
 		ReasoningContentField: "",
+		DryRun:                false,
 	}
 }
 
@@ -43,6 +45,7 @@ type OpenAIOptions struct {
 
 	ShowReasoningContent  bool
 	ReasoningContentField string
+	DryRun                bool
 }
 
 // AddPFlags 将选项绑定到命令行参数
@@ -60,6 +63,7 @@ func (o *OpenAIOptions) AddPFlags(fs *pflag.FlagSet) {
 
 	fs.BoolVar(&o.ShowReasoningContent, "show-reasoning", o.ShowReasoningContent, "Show reasoning content")
 	fs.StringVar(&o.ReasoningContentField, "reasoning-field", o.ReasoningContentField, "Reasoning content field")
+	fs.BoolVar(&o.DryRun, "dry-run", o.DryRun, "No request sent")
 }
 
 // newOpenAICommand 创建 openai 子命令
@@ -122,7 +126,18 @@ func newOpenAICommand() *cobra.Command {
 				return fmt.Errorf("build request error: %w", err)
 			}
 			if globalOpts.Verbose {
-				printRequest(os.Stderr, req)
+				var reqBody any
+				if !opts.DryRun {
+					reqBody, _ = builder.BuildBody()
+				}
+				printRequest(os.Stderr, req, reqBody)
+			}
+
+			if opts.DryRun {
+				reqBody, _ := builder.BuildBody()
+				reqBodyRaw, _ := json.MarshalIndent(reqBody, "", "  ")
+				fmt.Println(string(reqBodyRaw))
+				return nil
 			}
 
 			// 发送请求
@@ -136,9 +151,7 @@ func newOpenAICommand() *cobra.Command {
 			}
 
 			if resp.StatusCode != http.StatusOK {
-				if globalOpts.OutputFormat == "raw" {
-					_, _ = io.Copy(os.Stdout, resp.Body)
-				}
+				_, _ = io.Copy(os.Stdout, resp.Body)
 				return fmt.Errorf("unexpected status code: %d (!= 200)", resp.StatusCode)
 			}
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/h2non/filetype"
@@ -156,22 +157,39 @@ func (b OpenAIChatCompletionRequest) WithUserAttachment(path string) RequestBuil
 	return b
 }
 
+var attachmentPathRegexp = regexp.MustCompile(`@((?:\S|\\ )+)(?:\s|$)`)
+
 // WithUserText 带上用户文本消息
 func (b OpenAIChatCompletionRequest) WithUserText(content string) RequestBuilder {
 	if content == "" {
 		return b
 	}
-	// TODO: 解析其中的 @path/to/file
-	b.userContent = append(b.userContent, openai.TextContentPart(content))
-	return b
-}
 
-// Build 构建请求
-func (b OpenAIChatCompletionRequest) Build() (*http.Request, error) {
-	if len(b.errors) > 0 {
-		return nil, errors.Join(b.errors...)
+	builder := b
+	// 解析其中的 @path/to/file
+	attachmentPaths := attachmentPathRegexp.FindAllStringSubmatch(content, -1)
+	for _, groups := range attachmentPaths {
+		path := groups[1]
+		if strings.HasPrefix(path, "~/") {
+			home := os.Getenv("HOME")
+			path = filepath.Join(home, path[2:])
+		}
+		stat, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if stat.IsDir() {
+			continue
+		}
+		builder = builder.WithUserAttachment(path).(OpenAIChatCompletionRequest)
 	}
 
+	builder.userContent = append(builder.userContent, openai.TextContentPart(content))
+	return builder
+}
+
+// BuildBody 构建请求体内容
+func (b OpenAIChatCompletionRequest) BuildBody() (any, error) {
 	var messages []openai.ChatCompletionMessageParamUnion
 	messages = append(messages, b.history...)
 	if b.systemText != "" {
@@ -188,6 +206,20 @@ func (b OpenAIChatCompletionRequest) Build() (*http.Request, error) {
 	params.SetExtraFields(map[string]any{
 		"stream": b.stream,
 	})
+
+	return params, nil
+}
+
+// Build 构建请求
+func (b OpenAIChatCompletionRequest) Build() (*http.Request, error) {
+	if len(b.errors) > 0 {
+		return nil, errors.Join(b.errors...)
+	}
+
+	params, err := b.BuildBody()
+	if err != nil {
+		return nil, err
+	}
 
 	paramsRaw, err := json.Marshal(params)
 	if err != nil {

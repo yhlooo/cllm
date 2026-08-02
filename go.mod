@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/bombsimon/logrusr/v4 v4.1.0
 	github.com/go-logr/logr v1.4.4
+	github.com/h2non/filetype v1.1.3
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/openai/openai-go v1.12.0
 	github.com/sirupsen/logrus v1.9.4
@@ -15,7 +16,6 @@ require (
 )
 
 require (
-	github.com/h2non/filetype v1.1.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

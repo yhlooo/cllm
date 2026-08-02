@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -131,7 +132,7 @@ func NewCommand(name string) *cobra.Command {
 }
 
 // printRequest 打印请求
-func printRequest(w io.StringWriter, req *http.Request) {
+func printRequest(w io.StringWriter, req *http.Request, reqBody any) {
 	// 请求行
 	_, _ = w.WriteString(fmt.Sprintf("> %s %s %s\n", req.Method, req.URL.RequestURI(), req.Proto))
 
@@ -149,6 +150,11 @@ func printRequest(w io.StringWriter, req *http.Request) {
 	}
 	_, _ = w.WriteString(fmt.Sprintf("> Content-Length: %d\n", req.ContentLength))
 	_, _ = w.WriteString(">\n")
+
+	if reqBody != nil {
+		reqBodyRaw, _ := json.MarshalIndent(reqBody, "> ", "  ")
+		_, _ = w.WriteString(string(reqBodyRaw) + "\n")
+	}
 }
 
 // printResponse 打印响应

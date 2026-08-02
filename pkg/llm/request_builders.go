@@ -31,6 +31,8 @@ type RequestBuilder interface {
 	// WithUserText 带上用户文本消息
 	WithUserText(content string) RequestBuilder
 
+	// BuildBody 构建请求体内容
+	BuildBody() (any, error)
 	// Build 构建请求
 	Build() (*http.Request, error)
 }
