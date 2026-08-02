@@ -21,10 +21,16 @@ type RequestBuilder interface {
 	WithModel(model string) RequestBuilder
 	// WithStream 带上指定流式模式开关
 	WithStream(enabled bool) RequestBuilder
-	// WithSystemPrompt 带上系统提示词
-	WithSystemPrompt(content string) RequestBuilder
-	// WithUserPrompt 带上用户提示词
-	WithUserPrompt(content string) RequestBuilder
+
+	// WithSessionFile 带上会话历史消息
+	WithSessionFile(path string) RequestBuilder
+	// WithSystemText 带上系统文本消息
+	WithSystemText(content string) RequestBuilder
+	// WithUserAttachment 带上用户附件消息
+	WithUserAttachment(path string) RequestBuilder
+	// WithUserText 带上用户文本消息
+	WithUserText(content string) RequestBuilder
+
 	// Build 构建请求
 	Build() (*http.Request, error)
 }

@@ -18,10 +18,11 @@ func NewOpenAIOptions() OpenAIOptions {
 		URL:                   "",
 		BaseURL:               "",
 		APIKey:                "",
-		SystemPrompt:          "",
 		Headers:               nil,
 		Model:                 "",
 		Stream:                false,
+		SystemPrompt:          "",
+		Attachments:           nil,
 		ShowReasoningContent:  true,
 		ReasoningContentField: "",
 	}
@@ -29,13 +30,16 @@ func NewOpenAIOptions() OpenAIOptions {
 
 // OpenAIOptions openai 子命令选项
 type OpenAIOptions struct {
-	URL          string
-	BaseURL      string
-	APIKey       string
+	URL     string
+	BaseURL string
+	APIKey  string
+	Headers []string
+	Model   string
+	Stream  bool
+
+	SessionFile  string
 	SystemPrompt string
-	Headers      []string
-	Model        string
-	Stream       bool
+	Attachments  []string
 
 	ShowReasoningContent  bool
 	ReasoningContentField string
@@ -46,10 +50,14 @@ func (o *OpenAIOptions) AddPFlags(fs *pflag.FlagSet) {
 	fs.StringVarP(&o.URL, "url", "u", o.URL, "Request URL")
 	fs.StringVarP(&o.BaseURL, "base-url", "b", o.BaseURL, "Request base URL")
 	fs.StringVarP(&o.APIKey, "api-key", "k", o.APIKey, "API Key")
-	fs.StringVar(&o.SystemPrompt, "system-prompt", o.SystemPrompt, "System prompt")
 	fs.StringSliceVarP(&o.Headers, "header", "H", o.Headers, "Custom header(s)")
 	fs.StringVarP(&o.Model, "model", "m", o.Model, "Model name")
 	fs.BoolVarP(&o.Stream, "stream", "s", o.Stream, "Stream output")
+
+	fs.StringVar(&o.SessionFile, "session-file", o.SessionFile, "Session file")
+	fs.StringVar(&o.SystemPrompt, "system-prompt", o.SystemPrompt, "System prompt")
+	fs.StringSliceVarP(&o.Attachments, "attachment", "a", o.Attachments, "Attachment(s)")
+
 	fs.BoolVar(&o.ShowReasoningContent, "show-reasoning", o.ShowReasoningContent, "Show reasoning content")
 	fs.StringVar(&o.ReasoningContentField, "reasoning-field", o.ReasoningContentField, "Reasoning content field")
 }
@@ -58,9 +66,25 @@ func (o *OpenAIOptions) AddPFlags(fs *pflag.FlagSet) {
 func newOpenAICommand() *cobra.Command {
 	opts := NewOpenAIOptions()
 	cmd := &cobra.Command{
-		Use:   "openai PROMPT",
+		Use:   "openai [PROMPT...]",
 		Short: "Send OpenAI create chat completion request (POST /chat/completions)",
-		Args:  cobra.MinimumNArgs(1),
+		Long: `Send OpenAI create chat completion request (POST /chat/completions)
+
+## Input Messages
+
+  ┌────────────────────────────┐
+  │     [History Messages]     │
+  │     --session-file ...     │
+  ├────────────────────────────┤
+  │      [System Message]      │
+  │    --system-prompt ...     │
+  ├────────────────────────────┤
+  │       [User Message]       │
+  │  --attachment ...  (blob)  │
+  │            ...             │
+  │       args...  (text)      │
+  └────────────────────────────┘
+`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			globalOpts := GlobalOptionsFromContext(ctx)
@@ -71,8 +95,7 @@ func newOpenAICommand() *cobra.Command {
 				WithURL(opts.URL).
 				WithAPIKey(opts.APIKey).
 				WithModel(opts.Model).
-				WithStream(opts.Stream).
-				WithSystemPrompt(opts.SystemPrompt)
+				WithStream(opts.Stream)
 
 			for _, h := range opts.Headers {
 				key, value, err := parseHeader(h)
@@ -82,8 +105,15 @@ func newOpenAICommand() *cobra.Command {
 				builder = builder.WithHeader(key, value)
 			}
 
+			// 组装消息
+			builder = builder.
+				WithSessionFile(opts.SessionFile).
+				WithSystemText(opts.SystemPrompt)
+			for _, path := range opts.Attachments {
+				builder = builder.WithUserAttachment(path)
+			}
 			for _, arg := range args {
-				builder = builder.WithUserPrompt(arg)
+				builder = builder.WithUserText(arg)
 			}
 
 			// 构建请求
