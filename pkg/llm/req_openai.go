@@ -12,11 +12,44 @@ import (
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/shared"
 )
 
 const (
 	oaiChatCompletionURI = "/chat/completions"
 )
+
+// OpenAIChatCompletionRequestBuilder OpenAI 对话补全请求构造器接口
+type OpenAIChatCompletionRequestBuilder interface {
+	RequestBuilder
+
+	WithReasoningEffort(effort string) OpenAIChatCompletionRequestBuilder
+	WithMaxTokens(v int64) OpenAIChatCompletionRequestBuilder
+	WithMaxCompletionTokens(v int64) OpenAIChatCompletionRequestBuilder
+	WithPromptCacheKey(v string) OpenAIChatCompletionRequestBuilder
+	WithLogprobs(enabled bool) OpenAIChatCompletionRequestBuilder
+	WithTopLogprobs(v int64) OpenAIChatCompletionRequestBuilder
+	WithN(v int64) OpenAIChatCompletionRequestBuilder
+	WithSafetyIdentifier(id string) OpenAIChatCompletionRequestBuilder
+	WithModalities(modalities []string) OpenAIChatCompletionRequestBuilder
+	WithStop(flag ...string) OpenAIChatCompletionRequestBuilder
+	WithResponseFormatText() OpenAIChatCompletionRequestBuilder
+	WithResponseFormatJSONSchema(name string, strict *bool, desc *string, schema any) OpenAIChatCompletionRequestBuilder
+	WithResponseFormatJSON() OpenAIChatCompletionRequestBuilder
+	WithPrediction(content ...string) OpenAIChatCompletionRequestBuilder
+	WithSeed(seed int64) OpenAIChatCompletionRequestBuilder
+	WithFrequencyPenalty(v float64) OpenAIChatCompletionRequestBuilder
+	WithPresencePenalty(v float64) OpenAIChatCompletionRequestBuilder
+	WithTemperature(v float64) OpenAIChatCompletionRequestBuilder
+	WithTopP(v float64) OpenAIChatCompletionRequestBuilder
+	WithLogitBias(v map[string]int64) OpenAIChatCompletionRequestBuilder
+	WithStore(enabled bool) OpenAIChatCompletionRequestBuilder
+	WithServiceTier(v string) OpenAIChatCompletionRequestBuilder
+	WithStreamIncludeUsage(enabled bool) OpenAIChatCompletionRequestBuilder
+	WithMetadata(meta map[string]string) OpenAIChatCompletionRequestBuilder
+
+	// TODO: FunctionCall Functions ToolChoice Tools WebSearchOptions
+}
 
 // NewOpenAIChatCompletionRequest 创建 OpenAI 对话补全请求构造器
 func NewOpenAIChatCompletionRequest() OpenAIChatCompletionRequest {
@@ -30,15 +63,13 @@ type OpenAIChatCompletionRequest struct {
 	apiKey      string
 	extraHeader http.Header
 
-	model  string
+	params openai.ChatCompletionNewParams
 	stream bool
-
-	oaiMessages []openai.ChatCompletionMessageParamUnion
 
 	errors []error
 }
 
-var _ RequestBuilder = OpenAIChatCompletionRequest{}
+var _ OpenAIChatCompletionRequestBuilder = OpenAIChatCompletionRequest{}
 
 // WithContext 带上上下文
 func (b OpenAIChatCompletionRequest) WithContext(ctx context.Context) RequestBuilder {
@@ -78,7 +109,7 @@ func (b OpenAIChatCompletionRequest) WithHeader(key, value string) RequestBuilde
 
 // WithModel 带上模型名
 func (b OpenAIChatCompletionRequest) WithModel(model string) RequestBuilder {
-	b.model = model
+	b.params.Model = model
 	return b
 }
 
@@ -96,21 +127,17 @@ func (b OpenAIChatCompletionRequest) WithMessages(messages ...Message) RequestBu
 			b.errors = append(b.errors, err)
 			continue
 		}
-		b.oaiMessages = append(b.oaiMessages, oaiMsg)
+		b.params.Messages = append(b.params.Messages, oaiMsg)
 	}
 	return b
 }
 
 // BuildBody 构建请求体内容
 func (b OpenAIChatCompletionRequest) BuildBody() (any, error) {
-	params := &openai.ChatCompletionNewParams{
-		Model:    b.model,
-		Messages: b.oaiMessages,
-	}
+	params := b.params
 	params.SetExtraFields(map[string]any{
 		"stream": b.stream,
 	})
-
 	return params, nil
 }
 
@@ -297,4 +324,174 @@ func newOpenAIMessage(msg Message) (openai.ChatCompletionMessageParamUnion, erro
 	}
 
 	return openai.ChatCompletionMessageParamUnion{}, fmt.Errorf("unsupported role %q", msg.Role)
+}
+
+func (b OpenAIChatCompletionRequest) WithReasoningEffort(effort string) OpenAIChatCompletionRequestBuilder {
+	b.params.ReasoningEffort = openai.ReasoningEffort(effort)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithMaxTokens(v int64) OpenAIChatCompletionRequestBuilder {
+	b.params.MaxTokens = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithMaxCompletionTokens(v int64) OpenAIChatCompletionRequestBuilder {
+	b.params.MaxCompletionTokens = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithPromptCacheKey(v string) OpenAIChatCompletionRequestBuilder {
+	b.params.PromptCacheKey = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithLogprobs(enabled bool) OpenAIChatCompletionRequestBuilder {
+	b.params.Logprobs = param.NewOpt(enabled)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithTopLogprobs(v int64) OpenAIChatCompletionRequestBuilder {
+	b.params.TopLogprobs = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithN(v int64) OpenAIChatCompletionRequestBuilder {
+	b.params.N = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithSafetyIdentifier(id string) OpenAIChatCompletionRequestBuilder {
+	b.params.SafetyIdentifier = param.NewOpt(id)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithModalities(modalities []string) OpenAIChatCompletionRequestBuilder {
+	b.params.Modalities = modalities
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithStop(flag ...string) OpenAIChatCompletionRequestBuilder {
+	switch len(flag) {
+	case 0:
+		return b
+	case 1:
+		b.params.Stop.OfString = param.NewOpt(flag[0])
+	default:
+		b.params.Stop.OfStringArray = flag
+	}
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithResponseFormatText() OpenAIChatCompletionRequestBuilder {
+	b.params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+		OfText: &openai.ResponseFormatTextParam{},
+	}
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithResponseFormatJSONSchema(
+	name string,
+	strict *bool,
+	desc *string,
+	schema any,
+) OpenAIChatCompletionRequestBuilder {
+	var paramStrict param.Opt[bool]
+	if strict != nil {
+		paramStrict = param.NewOpt(*strict)
+	}
+	var paramDesc param.Opt[string]
+	if desc != nil {
+		paramDesc = param.NewOpt[string](*desc)
+	}
+	b.params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+		OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+			JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
+				Name:        name,
+				Strict:      paramStrict,
+				Description: paramDesc,
+				Schema:      schema,
+			},
+		},
+	}
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithResponseFormatJSON() OpenAIChatCompletionRequestBuilder {
+	b.params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+		OfJSONObject: &openai.ResponseFormatJSONObjectParam{},
+	}
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithPrediction(content ...string) OpenAIChatCompletionRequestBuilder {
+	switch len(content) {
+	case 0:
+		return b
+	case 1:
+		b.params.Prediction.Content = openai.ChatCompletionPredictionContentContentUnionParam{
+			OfString: param.NewOpt(content[0]),
+		}
+	default:
+		parts := make([]openai.ChatCompletionContentPartTextParam, 0, len(content))
+		for _, part := range content {
+			parts = append(parts, openai.ChatCompletionContentPartTextParam{
+				Text: part,
+			})
+		}
+		b.params.Prediction.Content = openai.ChatCompletionPredictionContentContentUnionParam{
+			OfArrayOfContentParts: parts,
+		}
+	}
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithSeed(seed int64) OpenAIChatCompletionRequestBuilder {
+	b.params.Seed = param.NewOpt(seed)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithFrequencyPenalty(v float64) OpenAIChatCompletionRequestBuilder {
+	b.params.FrequencyPenalty = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithPresencePenalty(v float64) OpenAIChatCompletionRequestBuilder {
+	b.params.PresencePenalty = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithTemperature(v float64) OpenAIChatCompletionRequestBuilder {
+	b.params.Temperature = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithTopP(v float64) OpenAIChatCompletionRequestBuilder {
+	b.params.TopP = param.NewOpt(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithLogitBias(v map[string]int64) OpenAIChatCompletionRequestBuilder {
+	b.params.LogitBias = v
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithStore(enabled bool) OpenAIChatCompletionRequestBuilder {
+	b.params.Store = param.NewOpt(enabled)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithServiceTier(v string) OpenAIChatCompletionRequestBuilder {
+	b.params.ServiceTier = openai.ChatCompletionNewParamsServiceTier(v)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithStreamIncludeUsage(enabled bool) OpenAIChatCompletionRequestBuilder {
+	b.params.StreamOptions.IncludeUsage = param.NewOpt(enabled)
+	return b
+}
+
+func (b OpenAIChatCompletionRequest) WithMetadata(meta map[string]string) OpenAIChatCompletionRequestBuilder {
+	b.params.Metadata = meta
+	return b
 }

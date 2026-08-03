@@ -16,17 +16,7 @@ import (
 // NewOpenAIOptions 创建默认 OpenAIOptions
 func NewOpenAIOptions() OpenAIOptions {
 	return OpenAIOptions{
-		URL:                   "",
-		BaseURL:               "",
-		APIKey:                "",
-		Headers:               nil,
-		Model:                 "",
-		Stream:                false,
-		SystemPrompt:          "",
-		Attachments:           nil,
-		ShowReasoningContent:  true,
-		ReasoningContentField: "",
-		DryRun:                false,
+		ShowReasoningContent: true,
 	}
 }
 
@@ -42,6 +32,27 @@ type OpenAIOptions struct {
 	SessionFile  string
 	SystemPrompt string
 	Attachments  []string
+
+	ReasoningEffort     string
+	MaxTokens           int64
+	MaxCompletionTokens int64
+	PromptCacheKey      string
+	Logprobs            bool
+	TopLogprobs         int64
+	N                   int64
+	SafetyIdentifier    string
+	Modalities          []string
+	Stop                []string
+	ResponseFormat      string
+	Seed                int64
+	FrequencyPenalty    float64
+	PresencePenalty     float64
+	Temperature         float64
+	TopP                float64
+	Store               bool
+	ServiceTier         string
+	StreamIncludeUsage  bool
+	Prediction          []string
 
 	ShowReasoningContent  bool
 	ReasoningContentField string
@@ -60,6 +71,27 @@ func (o *OpenAIOptions) AddPFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.SessionFile, "session-file", o.SessionFile, "Session file")
 	fs.StringVar(&o.SystemPrompt, "system-prompt", o.SystemPrompt, "System prompt")
 	fs.StringSliceVarP(&o.Attachments, "attachment", "a", o.Attachments, "Attachment(s)")
+
+	fs.StringVar(&o.ReasoningEffort, "reasoning-effort", o.ReasoningEffort, "Reasoning Effort")
+	fs.Int64Var(&o.MaxTokens, "max-tokens", o.MaxTokens, "Max tokens")
+	fs.Int64Var(&o.MaxCompletionTokens, "max-completion-tokens", o.MaxCompletionTokens, "Max completion tokens")
+	fs.StringVar(&o.PromptCacheKey, "prompt-cache-key", o.PromptCacheKey, "Prompt cache key")
+	fs.BoolVar(&o.Logprobs, "logprobs", o.Logprobs, "Enable logprobs")
+	fs.Int64Var(&o.TopLogprobs, "top-logprobs", o.TopLogprobs, "Top logprobs")
+	fs.Int64Var(&o.N, "n", o.N, "Number of completions")
+	fs.StringVar(&o.SafetyIdentifier, "safety-identifier", o.SafetyIdentifier, "Safety identifier")
+	fs.StringSliceVar(&o.Modalities, "modalities", o.Modalities, "Modalities")
+	fs.StringSliceVar(&o.Stop, "stop", o.Stop, "Stop sequences")
+	fs.StringVar(&o.ResponseFormat, "response-format", o.ResponseFormat, "Response format (text, json)")
+	fs.Int64Var(&o.Seed, "seed", o.Seed, "Seed")
+	fs.Float64Var(&o.FrequencyPenalty, "frequency-penalty", o.FrequencyPenalty, "Frequency penalty")
+	fs.Float64Var(&o.PresencePenalty, "presence-penalty", o.PresencePenalty, "Presence penalty")
+	fs.Float64Var(&o.Temperature, "temperature", o.Temperature, "Temperature")
+	fs.Float64Var(&o.TopP, "top-p", o.TopP, "Top P")
+	fs.BoolVar(&o.Store, "store", o.Store, "Store completion")
+	fs.StringVar(&o.ServiceTier, "service-tier", o.ServiceTier, "Service tier")
+	fs.BoolVar(&o.StreamIncludeUsage, "stream-include-usage", o.StreamIncludeUsage, "Include usage in stream")
+	fs.StringSliceVar(&o.Prediction, "prediction", o.Prediction, "Prediction content")
 
 	fs.BoolVar(&o.ShowReasoningContent, "show-reasoning", o.ShowReasoningContent, "Show reasoning content")
 	fs.StringVar(&o.ReasoningContentField, "reasoning-field", o.ReasoningContentField, "Reasoning content field")
@@ -156,21 +188,87 @@ func newOpenAICommand() *cobra.Command {
 				}
 			}
 
+			// 添加其他 OpenAI 参数
+			oaiBuilder := builder.(llm.OpenAIChatCompletionRequestBuilder)
+			if opts.ReasoningEffort != "" {
+				oaiBuilder = oaiBuilder.WithReasoningEffort(opts.ReasoningEffort)
+			}
+			if opts.MaxTokens != 0 {
+				oaiBuilder = oaiBuilder.WithMaxTokens(opts.MaxTokens)
+			}
+			if opts.MaxCompletionTokens != 0 {
+				oaiBuilder = oaiBuilder.WithMaxCompletionTokens(opts.MaxCompletionTokens)
+			}
+			if opts.PromptCacheKey != "" {
+				oaiBuilder = oaiBuilder.WithPromptCacheKey(opts.PromptCacheKey)
+			}
+			if opts.Logprobs {
+				oaiBuilder = oaiBuilder.WithLogprobs(true)
+			}
+			if opts.TopLogprobs != 0 {
+				oaiBuilder = oaiBuilder.WithTopLogprobs(opts.TopLogprobs)
+			}
+			if opts.N != 0 {
+				oaiBuilder = oaiBuilder.WithN(opts.N)
+			}
+			if opts.SafetyIdentifier != "" {
+				oaiBuilder = oaiBuilder.WithSafetyIdentifier(opts.SafetyIdentifier)
+			}
+			if len(opts.Modalities) > 0 {
+				oaiBuilder = oaiBuilder.WithModalities(opts.Modalities)
+			}
+			if len(opts.Stop) > 0 {
+				oaiBuilder = oaiBuilder.WithStop(opts.Stop...)
+			}
+			switch opts.ResponseFormat {
+			case "text":
+				oaiBuilder = oaiBuilder.WithResponseFormatText()
+			case "json":
+				oaiBuilder = oaiBuilder.WithResponseFormatJSON()
+			}
+			if opts.Seed != 0 {
+				oaiBuilder = oaiBuilder.WithSeed(opts.Seed)
+			}
+			if opts.FrequencyPenalty != 0 {
+				oaiBuilder = oaiBuilder.WithFrequencyPenalty(opts.FrequencyPenalty)
+			}
+			if opts.PresencePenalty != 0 {
+				oaiBuilder = oaiBuilder.WithPresencePenalty(opts.PresencePenalty)
+			}
+			if opts.Temperature != 0 {
+				oaiBuilder = oaiBuilder.WithTemperature(opts.Temperature)
+			}
+			if opts.TopP != 0 {
+				oaiBuilder = oaiBuilder.WithTopP(opts.TopP)
+			}
+			if opts.Store {
+				oaiBuilder = oaiBuilder.WithStore(true)
+			}
+			if opts.ServiceTier != "" {
+				oaiBuilder = oaiBuilder.WithServiceTier(opts.ServiceTier)
+			}
+			if opts.StreamIncludeUsage {
+				oaiBuilder = oaiBuilder.WithStreamIncludeUsage(true)
+			}
+			if len(opts.Prediction) > 0 {
+				oaiBuilder = oaiBuilder.WithPrediction(opts.Prediction...)
+			}
+
 			// 构建请求
-			req, err := builder.Build()
+			req, err := oaiBuilder.Build()
 			if err != nil {
 				return fmt.Errorf("build request error: %w", err)
 			}
 			if globalOpts.Verbose {
 				var reqBody any
 				if !opts.DryRun {
-					reqBody, _ = builder.BuildBody()
+					reqBody, _ = oaiBuilder.BuildBody()
 				}
 				printRequest(os.Stderr, req, reqBody)
 			}
 
 			if opts.DryRun {
-				reqBody, _ := builder.BuildBody()
+				reqBody, _ := oaiBuilder.BuildBody()
 				reqBodyRaw, _ := json.MarshalIndent(reqBody, "", "  ")
 				fmt.Println(string(reqBodyRaw))
 				return nil
