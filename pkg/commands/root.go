@@ -125,6 +125,7 @@ func NewCommand(name string) *cobra.Command {
 
 	cmd.AddCommand(
 		newOpenAICommand(),
+		newOllamaCommand(),
 		newVersionCommand(),
 	)
 

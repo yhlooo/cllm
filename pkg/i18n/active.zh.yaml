@@ -10,6 +10,9 @@ commands.GlobalOptsOutputFormatDesc:
 commands.GlobalOptsVerboseDesc:
     hash: sha1-3827e95504b04168ced23bfc620cc146cba66160
     other: 显示更多日志
+commands.OllamaCmdShortDesc:
+    hash: sha1-997af6f353460a04efa8e0830d2aeaed78e396b8
+    other: 发送 Ollama 对话请求（POST /api/chat）
 commands.VersionDesc:
     hash: sha1-79526ef3b57592a549aa6b35ce7596080ebf5668
     other: 打印版本信息
