@@ -25,4 +25,9 @@ var (
 		ID:    "commands.VersionDesc",
 		Other: "Print the version information",
 	}
+
+	MsgOllamaCmdShortDesc = &i18n.Message{
+		ID:    "commands.OllamaCmdShortDesc",
+		Other: "Send Ollama chat request (POST /api/chat)",
+	}
 )

@@ -2,4 +2,5 @@ commands.CmdLongDesc: cllm - CLI Client for LLM
 commands.CmdShortDesc: cllm - CLI Client for LLM
 commands.GlobalOptsOutputFormatDesc: Output format. One of (human-readable, json, raw)
 commands.GlobalOptsVerboseDesc: Show more logs
+commands.OllamaCmdShortDesc: Send Ollama chat request (POST /api/chat)
 commands.VersionDesc: Print the version information
