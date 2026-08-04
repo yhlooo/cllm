@@ -83,3 +83,115 @@ cllm openai \
   --session-file history.jsonl \
   "What is cllm?"
 ```
+
+### Request Ollama Chat API
+
+```shell
+cllm ollama \
+  -b "<base-url>" \
+  -m "<model-name>" \
+  "<prompt>"
+```
+
+By default, connects to `http://localhost:11434`. For example:
+
+```shell
+cllm ollama -m llama3.1 "hello"
+```
+
+Stream output with `-s/--stream`:
+
+```shell
+cllm ollama -m llama3.1 -s "Write a poem"
+```
+
+Attach images with `-a/--attachment` or `@path` inline syntax (supports multimodal models like `llava`):
+
+```shell
+cllm ollama -m llava -a photo.jpg "Describe this image"
+```
+
+Persist session history with `--session-file`:
+
+```shell
+cllm ollama -m llama3.1 --session-file chat.jsonl "Hello"
+cllm ollama -m llama3.1 --session-file chat.jsonl "Continue"
+```
+
+JSON structured output with `--format`:
+
+```shell
+cllm ollama -m llama3.1 --format json "List three colors"
+```
+
+Enable thinking mode with `--think` (supports `true`/`false` or `high`/`medium`/`low`/`max`):
+
+```shell
+cllm ollama -m gpt-oss --think low --show-reasoning "What is 1+1?"
+```
+
+Set model options like `--temperature`, `--seed`, `--num-predict`:
+
+```shell
+cllm ollama -m llama3.1 --temperature 0.7 --seed 42 --num-predict 100 "Hello"
+```
+
+### Request Gemini API
+
+```shell
+cllm gemini \
+  -b "<base-url>" \
+  -k "<api-key>" \
+  -m "<model-name>" \
+  "<prompt>"
+```
+
+By default, connects to `https://generativelanguage.googleapis.com/v1beta`. For example:
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash "hello"
+```
+
+Stream output with `-s/--stream`:
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash -s "Write a poem"
+```
+
+Attach images, audio, and other files with `-a/--attachment` or `@path` inline syntax:
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash -a photo.jpg "Describe this image"
+```
+
+Persist session history with `--session-file`:
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash --session-file chat.jsonl "Hello"
+cllm gemini -k "AIza..." -m gemini-2.5-flash --session-file chat.jsonl "Continue"
+```
+
+JSON structured output with `--response-mime-type`:
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash \
+  --response-mime-type application/json \
+  "List three colors"
+```
+
+Enable model thinking with `--thinking` and `--thinking-budget`:
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash \
+  --thinking --thinking-budget 1024 --show-reasoning \
+  "Solve this math problem: ..."
+```
+
+Set generation parameters:
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash \
+  --temperature 0.7 --top-p 0.9 --top-k 40 \
+  --max-output-tokens 1024 --seed 42 \
+  "Hello"
+```

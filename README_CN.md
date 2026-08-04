@@ -84,3 +84,115 @@ cllm openai \
   "What is cllm?"
 ```
 
+### 请求 Ollama Chat API
+
+```shell
+cllm ollama \
+  -b "<base-url>" \
+  -m "<model-name>" \
+  "<prompt>"
+```
+
+默认连接 `http://localhost:11434`，例如：
+
+```shell
+cllm ollama -m llama3.1 "你好"
+```
+
+通过 `-s/--stream` 启用流式输出：
+
+```shell
+cllm ollama -m llama3.1 -s "写一首诗"
+```
+
+使用 `-a/--attachment` 或 `@path` 内联语法附加图片（需多模态模型如 `llava`）：
+
+```shell
+cllm ollama -m llava -a photo.jpg "描述这张图片"
+```
+
+通过 `--session-file` 持久化会话历史：
+
+```shell
+cllm ollama -m llama3.1 --session-file chat.jsonl "你好"
+cllm ollama -m llama3.1 --session-file chat.jsonl "继续"
+```
+
+通过 `--format` 启用 JSON 结构化输出：
+
+```shell
+cllm ollama -m llama3.1 --format json "列出三个颜色"
+```
+
+通过 `--think` 启用思考模式（支持 `true`/`false` 或 `high`/`medium`/`low`/`max`）：
+
+```shell
+cllm ollama -m gpt-oss --think low --show-reasoning "1+1 等于几？"
+```
+
+设置模型参数如 `--temperature`、`--seed`、`--num-predict`：
+
+```shell
+cllm ollama -m llama3.1 --temperature 0.7 --seed 42 --num-predict 100 "你好"
+```
+
+### 请求 Gemini API
+
+```shell
+cllm gemini \
+  -b "<base-url>" \
+  -k "<api-key>" \
+  -m "<model-name>" \
+  "<prompt>"
+```
+
+默认连接 `https://generativelanguage.googleapis.com/v1beta`，例如：
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash "你好"
+```
+
+通过 `-s/--stream` 启用流式输出：
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash -s "写一首诗"
+```
+
+使用 `-a/--attachment` 或 `@path` 内联语法附加图片、音频等文件：
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash -a photo.jpg "描述这张图片"
+```
+
+通过 `--session-file` 持久化会话历史：
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash --session-file chat.jsonl "你好"
+cllm gemini -k "AIza..." -m gemini-2.5-flash --session-file chat.jsonl "继续"
+```
+
+通过 `--response-mime-type` 启用 JSON 结构化输出：
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash \
+  --response-mime-type application/json \
+  "列出三个颜色"
+```
+
+通过 `--thinking` 和 `--thinking-budget` 启用模型思考：
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash \
+  --thinking --thinking-budget 1024 --show-reasoning \
+  "求解这道数学题：..."
+```
+
+设置生成参数：
+
+```shell
+cllm gemini -k "AIza..." -m gemini-2.5-flash \
+  --temperature 0.7 --top-p 0.9 --top-k 40 \
+  --max-output-tokens 1024 --seed 42 \
+  "你好"
+```
+
