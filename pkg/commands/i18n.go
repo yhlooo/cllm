@@ -21,6 +21,15 @@ var (
 		Other: `cllm - CLI Client for LLM`,
 	}
 
+	MsgGeminiDesc = &i18n.Message{
+		ID:    "commands.GeminiDesc",
+		Other: "Send Gemini generate content request (POST /models/{model}:generateContent)",
+	}
+	MsgGeminiLongDesc = &i18n.Message{
+		ID:    "commands.GeminiLongDesc",
+		Other: `Send Gemini generate content request (POST /models/{model}:generateContent)`,
+	}
+
 	MsgVersionDesc = &i18n.Message{
 		ID:    "commands.VersionDesc",
 		Other: "Print the version information",
