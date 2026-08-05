@@ -39,4 +39,9 @@ var (
 		ID:    "commands.OllamaCmdShortDesc",
 		Other: "Send Ollama chat request (POST /api/chat)",
 	}
+
+	MsgAnthropicCmdShortDesc = &i18n.Message{
+		ID:    "commands.AnthropicCmdShortDesc",
+		Other: "Send Anthropic create message request (POST /v1/messages)",
+	}
 )

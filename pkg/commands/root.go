@@ -127,6 +127,7 @@ func NewCommand(name string) *cobra.Command {
 		newOpenAICommand(),
 		newGeminiCommand(),
 		newOllamaCommand(),
+		newAnthropicCommand(),
 		newVersionCommand(),
 	)
 
@@ -155,7 +156,7 @@ func printRequest(w io.StringWriter, req *http.Request, reqBody any) {
 
 	if reqBody != nil {
 		reqBodyRaw, _ := json.MarshalIndent(reqBody, "> ", "  ")
-		_, _ = w.WriteString(string(reqBodyRaw) + "\n")
+		_, _ = w.WriteString("> " + string(reqBodyRaw) + "\n")
 	}
 }
 
